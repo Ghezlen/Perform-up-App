@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
-import 'providers/notification_provider.dart';
-import 'screens/notifications/received_notifications_view.dart';
-import 'screens/notifications/send_notification_view.dart';
+import 'package:pfe/providers/notification_provider.dart';
+import 'package:pfe/screens/notifications/received_notifications_view.dart';
+import 'package:pfe/screens/notifications/send_notification_view.dart';
 
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});

@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../providers/notification_provider.dart';
 
 class ReceivedNotificationsView extends StatelessWidget {
+  const ReceivedNotificationsView({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Consumer<NotificationProvider>(

@@ -8,10 +8,10 @@ class GroupChatScreen extends StatefulWidget {
   final List<Map<String, dynamic>>? messages;
 
   const GroupChatScreen({
-    Key? key,
+    super.key,
     required this.groupName,
     this.messages,
-  }) : super(key: key);
+  });
 
   @override
   _GroupChatScreenState createState() => _GroupChatScreenState();

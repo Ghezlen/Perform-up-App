@@ -4,7 +4,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pfe/screens/chat/group_chat_screen.dart';
 
 class GroupChatsScreen extends StatefulWidget {
-  const GroupChatsScreen({Key? key}) : super(key: key);
+  const GroupChatsScreen({super.key});
 
   @override
   _GroupChatsScreenState createState() => _GroupChatsScreenState();

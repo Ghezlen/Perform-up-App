@@ -6,7 +6,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -18,6 +18,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
     bool _isLoginPasswordVisible = false;
   
+  // Predefined admin credentials
+  static const String ADMIN_EMAIL = "admin@textile.com";
+  static const String ADMIN_PASSWORD = "admin123!";
+
+  void _handleLogin() {
+    if (_formKey.currentState!.validate()) {
+      final String email = controllers.emailController.text;
+      final String password = controllers.passwordController.text;
+
+      if (email == ADMIN_EMAIL && password == ADMIN_PASSWORD) {
+        // Admin login
+        Navigator.pushReplacementNamed(context, '/manage-users');
+      } else {
+        // Regular user login
+        Navigator.pushReplacementNamed(context, '/chats');
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,7 +106,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
 
                 TextFormField(
-                  obscureText: !_isLoginPasswordVisible,  // Toggle visibility
+                  controller: controllers.passwordController,
+                  obscureText: !_isLoginPasswordVisible,
                   decoration: InputDecoration(
                     hintText: 'Enter your password',
                     filled: true,
@@ -152,9 +171,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     onPressed: () {
-                      if (_formKey.currentState!.validate()){
-                        print('Sign In button pressed');
-                      }
+                      
+                        _handleLogin();
+                      
                       
                     },
                     child: const Text(

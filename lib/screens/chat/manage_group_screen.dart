@@ -7,10 +7,10 @@ class ManageGroupScreen extends StatefulWidget {
   final List<Map<String, dynamic>> members;
 
   const ManageGroupScreen({
-    Key? key,
+    super.key,
     required this.groupName,
     required this.members,
-  }) : super(key: key);
+  });
 
   @override
   _ManageGroupScreenState createState() => _ManageGroupScreenState();
