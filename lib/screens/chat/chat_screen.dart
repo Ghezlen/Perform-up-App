@@ -8,11 +8,11 @@ class ChatScreen extends StatefulWidget {
   final List<Map<String, dynamic>>? messages;
 
   const ChatScreen({
-    Key? key,
+    super.key,
     required this.name,
     required this.image,
     this.messages,
-  }) : super(key: key);
+  });
 
   @override
   _ChatScreenState createState() => _ChatScreenState();

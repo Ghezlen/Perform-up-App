@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pfe/controllers/signup_controller.dart';
-import 'package:pfe/otp_verification_screen.dart';
+import 'package:pfe/screens/authentication/otp_verification_screen.dart';
+import 'package:pfe/services/auth_service.dart';
+
+
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({Key? key}) : super(key: key);
+  const SignUpScreen({super.key});
 
   @override
   _SignUpScreenState createState() => _SignUpScreenState();
@@ -14,10 +17,53 @@ class SignUpScreen extends StatefulWidget {
 class _SignUpScreenState extends State<SignUpScreen> {
   final SignUpControllers controllers = SignUpControllers();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final _authService = AuthService();
+  bool _isLoading = false;
 
 
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
+
+  void _handleSignUp() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() => _isLoading = true);
+      bool success = await _authService.signUp(
+        name: controllers.nameController.text.trim(),
+        email: controllers.emailController.text.trim(),
+        password: controllers.passwordController.text,
+      );
+    
+
+      setState(() => _isLoading = false);
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Signup successful!')),
+
+        );
+          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => OtpVerificationScreen(email: controllers.emailController.text),
+                            ),
+                          );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Signup failed!')),
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    controllers.nameController.dispose();
+    controllers.emailController.dispose();
+    controllers.passwordController.dispose();
+    controllers.confirmPasswordController.dispose();
+    super.dispose();
+  }
+
 
 
   @override
@@ -194,17 +240,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   SizedBox(
                     width: double.infinity,
                     height: 55,
-                    child: ElevatedButton(
+                    child: 
+                    _isLoading
+                  ? const CircularProgressIndicator()
+                  :ElevatedButton(
                       onPressed: () {
-                        if (_formKey.currentState!.validate()) {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => OtpVerificationScreen(email: controllers.emailController.text),
-                            ),
-                          );
-                          // Proceed with the signup logic
-                        }
+                        _handleSignUp();
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF6BBFB5),

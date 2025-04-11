@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:pfe/chat_screen.dart';
+import 'package:pfe/screens/chat/chat_screen.dart';
 
 class ChatListScreen extends StatelessWidget {
   const ChatListScreen({super.key});
@@ -55,6 +55,8 @@ class ChatListScreen extends StatelessWidget {
 }
 
 class ChatList extends StatefulWidget {
+  const ChatList({super.key});
+
   @override
   _ChatListState createState() => _ChatListState();
 }
@@ -186,6 +188,8 @@ class _ChatListState extends State<ChatList> {
 
 
 class BottomNavBar extends StatefulWidget {
+  const BottomNavBar({super.key});
+
   @override
   _BottomNavBarState createState() => _BottomNavBarState();
 }

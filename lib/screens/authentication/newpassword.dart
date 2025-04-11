@@ -6,7 +6,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 
 class NewPasswordScreen extends StatefulWidget {
-  const NewPasswordScreen({Key? key}) : super(key: key);
+  const NewPasswordScreen({super.key});
   @override
   _NewPasswordScreenState createState() => _NewPasswordScreenState();
 
