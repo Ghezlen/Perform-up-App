@@ -2,14 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pfe/screens/chat/manage_group_screen.dart';
+import 'package:pfe/services/api_service.dart';
+import 'package:pfe/services/websocket_service.dart';
+import 'package:pfe/models/message.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 class GroupChatScreen extends StatefulWidget {
   final String groupName;
+  final String? groupId;
   final List<Map<String, dynamic>>? messages;
 
   const GroupChatScreen({
     super.key,
     required this.groupName,
+    this.groupId,
     this.messages,
   });
 
@@ -19,75 +28,284 @@ class GroupChatScreen extends StatefulWidget {
 
 class _GroupChatScreenState extends State<GroupChatScreen> {
   final TextEditingController _messageController = TextEditingController();
-  late List<Map<String, dynamic>> messages;
-
+  final ScrollController _scrollController = ScrollController();
+  final ApiService _apiService = ApiService();
+  final WebSocketService _webSocketService = WebSocketService();
+  
+  List<Map<String, dynamic>> messages = [];
+  bool _isLoading = true;
+  String? _currentUserId;
+  String? _currentUsername;
+  StreamSubscription? _chatSubscription;
+  
   @override
   void initState() {
     super.initState();
-    messages = widget.messages ?? [
-      {
-        "text": "Are you coming tomorrow?",
-        "sender": {"name": "Smith Mathew", "image": "assets/images/smith.png"},
-        "isSentByUser": false,
-      },
-      {
-        "text": "just like everyday, ig",
-        "sender": {"name": "You", "image": null},
-        "isSentByUser": true,
-      },
-      {
-        "text": "Am Grateful for that.",
-        "sender": {"name": "Merry An.", "image": "assets/images/merry.png"},
-        "isSentByUser": false,
-      },
-      {
-        "text": "See you !",
-        "sender": {"name": "Merry An.", "image": "assets/images/merry.png"},
-        "isSentByUser": false,
-      },
-      {
-        "text": "See you soon Merry!",
-        "sender": {"name": "You", "image": null},
-        "isSentByUser": true,
-      },
-      {
-        "text": "Thursday 24, 2022",
-        "isDate": true,
-      },
-      {
-        "text": "Denim pile. Late night.",
-        "sender": {"name": "John Walton", "image": "assets/images/john.png"},
-        "isSentByUser": false,
-      },
-      {
-        "text": "Coffee break",
-        "sender": {"name": "John Walton", "image": "assets/images/john.png"},
-        "isSentByUser": false,
-      },
-      {
-        "text": "Ok!",
-        "sender": {"name": "Smith Mathew", "image": "assets/images/smith.png"},
-        "isSentByUser": false,
-      },
-      {
-        "text": "Definitely need a caffeine boost",
-        "sender": {"name": "You", "image": null},
-        "isSentByUser": true,
-      },
-    ];
+    _initializeChat();
+  }
+  
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    _chatSubscription?.cancel();
+    super.dispose();
+  }
+  
+  void _subscribeToWebSocketMessages() {
+    if (widget.groupId == null) return;
+    
+    // Subscribe to group-specific WebSocket topic
+    _webSocketService.subscribeToGroupChat(widget.groupId!);
+    
+    // Listen for new messages
+    _chatSubscription = _webSocketService.chatMessageStream.listen((message) {
+      if (message.chatGroupId == widget.groupId) {
+        final bool isSentByUser = message.senderId == _currentUserId;
+        
+        final newMessage = <String, dynamic>{
+          "id": message.id,
+          "text": message.content,
+          "sender": <String, dynamic>{
+            "name": isSentByUser ? "You" : message.senderName,
+            "userId": message.senderId,
+          },
+          "isSentByUser": isSentByUser,
+          "timestamp": message.timestamp,
+        };
+        
+        // Add the message if it's not already in the list
+        if (!messages.any((m) => m["id"] == message.id)) {
+          setState(() {
+            messages.add(newMessage);
+            
+            // Sort messages by timestamp
+            messages.sort((a, b) {
+              final aTime = a["timestamp"] as DateTime;
+              final bTime = b["timestamp"] as DateTime;
+              return aTime.compareTo(bTime);
+            });
+          });
+          
+          // Scroll to bottom when new messages arrive
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _scrollToBottom();
+          });
+        }
+      }
+    });
+  }
+  
+  Future<void> _initializeChat() async {
+    try {
+      // Get user data
+      final prefs = await SharedPreferences.getInstance();
+      _currentUserId = prefs.getString('userId');
+      _currentUsername = prefs.getString('username');
+      
+      // Initialize empty messages list
+      setState(() {
+        messages = [];
+      });
+      
+      // Try to load real messages if groupId is provided
+      if (widget.groupId != null && _currentUserId != null) {
+        await _loadMessages();
+        
+        // Connect to WebSocket if not already connected
+        if (!_webSocketService.isConnected) {
+          await _webSocketService.connect();
+        }
+        
+        // Subscribe to WebSocket messages
+        _subscribeToWebSocketMessages();
+        
+        // Mark chat as read
+        try {
+          await _apiService.markChatAsRead(widget.groupId!, _currentUserId!);
+        } catch (e) {
+          print('Error marking chat as read: $e');
+        }
+      }
+      
+      setState(() {
+        _isLoading = false;
+      });
+      
+      // Scroll to bottom after messages load
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom();
+      });
+    } catch (e) {
+      print('Error initializing chat: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+  
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+  
+  Future<void> _loadMessages() async {
+    if (widget.groupId == null || _currentUserId == null) return;
+    
+    try {
+      final apiMessages = await _apiService.getGroupMessages(widget.groupId!);
+      
+      // Convert API messages to UI format
+      final List<Map<String, dynamic>> uiMessages = apiMessages.map((msg) {
+        final bool isSentByUser = msg.senderId == _currentUserId;
+        
+        return <String, dynamic>{
+          "id": msg.id,
+          "text": msg.content,
+          "sender": <String, dynamic>{
+            "name": isSentByUser ? "You" : msg.senderName,
+            "userId": msg.senderId, // Store user ID for fetching profile image later
+          },
+          "isSentByUser": isSentByUser,
+          "timestamp": msg.timestamp,
+        };
+      }).toList();
+      
+      // Sort messages by timestamp
+      uiMessages.sort((a, b) {
+        final aTime = a["timestamp"] as DateTime;
+        final bTime = b["timestamp"] as DateTime;
+        return aTime.compareTo(bTime);
+      });
+      
+      setState(() {
+        messages = uiMessages;
+      });
+      
+      // Fetch user profile images after loading messages
+      _fetchUserProfiles();
+    } catch (e) {
+      print('Error loading messages: $e');
+    }
   }
 
-  void _sendMessage() {
-    if (_messageController.text.trim().isNotEmpty) {
+  Future<void> _sendMessage() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty) return;
+    
+    // Clear the input field early for better UX
+    _messageController.clear();
+    
+    // If we don't have groupId, use the mock implementation
+    if (widget.groupId == null || _currentUserId == null) {
       setState(() {
         messages.add({
-          "text": _messageController.text,
-          "sender": {"name": "You", "image": null},
+          "text": text,
+          "sender": {"name": "You", "image": null, "userId": _currentUserId},
           "isSentByUser": true,
         });
-        _messageController.clear();
       });
+      return;
+    }
+    
+    try {
+      // Optimistically add message to UI
+      final tempMessageId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+      setState(() {
+        messages.add({
+          "id": tempMessageId,
+          "text": text,
+          "sender": {"name": "You", "image": null, "userId": _currentUserId},
+          "isSentByUser": true,
+          "isOptimistic": true, // Mark as optimistic to identify if needed
+          "timestamp": DateTime.now(),
+        });
+      });
+      
+      // Scroll to the bottom
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom();
+      });
+      
+      // Send message via the API
+      final sentMessage = await _apiService.sendMessage(
+        _currentUserId!,
+        widget.groupId!,
+        text
+      );
+      
+      // Also send via WebSocket for real-time delivery
+      await _webSocketService.sendGroupMessage(widget.groupId!, text);
+      
+      // Replace the optimistic message with the real one
+      setState(() {
+        final optimisticIndex = messages.indexWhere((msg) => msg["id"] == tempMessageId);
+        if (optimisticIndex >= 0) {
+          messages[optimisticIndex] = {
+            "id": sentMessage.id,
+            "text": sentMessage.content,
+            "sender": {"name": "You", "userId": _currentUserId},
+            "isSentByUser": true,
+            "timestamp": sentMessage.timestamp,
+          };
+        }
+      });
+    } catch (e) {
+      print('Error sending message: $e');
+      
+      // Show error and remove optimistic message
+      setState(() {
+        messages.removeWhere((msg) => msg["id"] == 'temp_${DateTime.now().millisecondsSinceEpoch}');
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send message: $e')),
+      );
+    }
+  }
 
+  // Method to fetch user profile images
+  Future<void> _fetchUserProfiles() async {
+    if (messages.isEmpty) return;
+    
+    try {
+      // Extract unique user IDs from messages (excluding the current user)
+      final Set<String> userIds = messages
+          .where((m) => !m['isSentByUser'] && m['sender'] != null && m['sender']['userId'] != null)
+          .map((m) => m['sender']['userId'] as String)
+          .toSet();
+      
+      if (userIds.isEmpty) return;
+      
+      // For each user, try to get their profile info including image
+      for (final userId in userIds) {
+        try {
+          // This assumes you have or will create a method in ApiService to get user profiles
+          final userProfile = await _apiService.getUserProfile(userId);
+          
+          if (userProfile != null && userProfile['profileImage'] != null) {
+            // Update all messages from this user with their profile image
+            setState(() {
+              for (int i = 0; i < messages.length; i++) {
+                if (!messages[i]['isSentByUser'] && 
+                    messages[i]['sender'] != null && 
+                    messages[i]['sender']['userId'] == userId) {
+                  messages[i]['sender']['image'] = userProfile['profileImage'];
+                }
+              }
+            });
+          }
+        } catch (e) {
+          print('Error fetching profile for user $userId: $e');
+        }
+      }
+    } catch (e) {
+      print('Error in _fetchUserProfiles: $e');
     }
   }
 
@@ -128,19 +346,26 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           IconButton(
             icon: Icon(FontAwesomeIcons.ellipsisVertical, color: Color(0xC5000000), size: 20),
             onPressed: () {
+              if (widget.groupId == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Cannot manage group: No group ID available')),
+                );
+                return;
+              }
+              
+              // Print debug information
+              print('Opening ManageGroupScreen with:');
+              print('- Group ID: ${widget.groupId}');
+              print('- Group Name: ${widget.groupName}');
+              print('- Current User ID: $_currentUserId');
+              
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => ManageGroupScreen(
                     groupName: widget.groupName,
-                    members: [
-                      {"name": "Smith Mathew", "image": "assets/images/smith.png"},
-                      {"name": "Merry An.", "image": "assets/images/merry.png"},
-                      {"name": "John Walton", "image": "assets/images/john.png"},
-                      {"name": "Monica Randawa", "image": "assets/images/monica.png"},
-                      {"name": "Innoxent Jay", "image": "assets/images/innoxent.png"},
-                      {"name": "Harry Samit", "image": "assets/images/harry.png"},
-                    ],
+                    groupId: widget.groupId!,
+                    // We'll fetch members from API in ManageGroupScreen
                   ),
                 ),
               );
@@ -153,70 +378,98 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              padding: EdgeInsets.all(16),
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                final message = messages[index];
-                
-                if (message.containsKey('isDate')) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Text(
-                        message['text'],
-                        style: GoogleFonts.poppins(
-                          color: Color(0x99000000),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  );
-                }
-
-                final bool isSentByUser = message['isSentByUser'];
-                final sender = message['sender'];
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: isSentByUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-                    children: [
-                      if (!isSentByUser) ...[
-                        CircleAvatar(
-                          radius: 16,
-                          backgroundImage: AssetImage(sender['image']),
-                        ),
-                        SizedBox(width: 8),
-                      ],
-                      Flexible(
-                        child: Container(
-                          //margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-                          padding: EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: isSentByUser ? Color(0xFFD0ECE8) : Color(0xFFE4E4E4).withOpacity(0.83),
-                            borderRadius: BorderRadius.only(
-                              topLeft: Radius.circular(16),
-                              topRight: Radius.circular(16),
-                              bottomLeft: isSentByUser ? Radius.circular(16) : Radius.circular(0),
-                              bottomRight: isSentByUser ? Radius.circular(0) : Radius.circular(16),
-                            ),
-                          ),
+            child: _isLoading
+              ? Center(child: CircularProgressIndicator(color: Color(0xFF6BBFB5)))
+              : ListView.builder(
+                  controller: _scrollController,
+                  padding: EdgeInsets.all(16),
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final message = messages[index];
+                    
+                    if (message.containsKey('isDate')) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Text(
                             message['text'],
                             style: GoogleFonts.poppins(
-                              color: Color(0xC5000000),
-                              fontSize: 14,
+                              color: Color(0x99000000),
+                              fontSize: 12,
                             ),
                           ),
                         ),
+                      );
+                    }
+
+                    final bool isSentByUser = message['isSentByUser'];
+                    final sender = message['sender'];
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: isSentByUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+                        children: [
+                          if (!isSentByUser) ...[
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundColor: Color(0xFF6BBFB5),
+                              backgroundImage: sender['image'] != null && !sender['image'].toString().startsWith('assets/') 
+                                ? MemoryImage(base64Decode(sender['image'].toString().split(',').last)) as ImageProvider
+                                : null,
+                              child: sender['image'] == null || sender['image'].toString().startsWith('assets/')
+                                ? Text(
+                                    sender['name'][0].toUpperCase(),
+                                    style: TextStyle(color: Colors.white),
+                                  )
+                                : null,
+                            ),
+                            SizedBox(width: 8),
+                          ],
+                          Flexible(
+                            child: Column(
+                              crossAxisAlignment: isSentByUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                              children: [
+                                if (!isSentByUser) // Only show name for others' messages
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 4, bottom: 4),
+                                    child: Text(
+                                      sender['name'],
+                                      style: GoogleFonts.poppins(
+                                        color: Color(0x99000000),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                Container(
+                                  padding: EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: isSentByUser ? Color(0xFFD0ECE8) : Color(0xFFE4E4E4).withOpacity(0.83),
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: Radius.circular(16),
+                                      topRight: Radius.circular(16),
+                                      bottomLeft: isSentByUser ? Radius.circular(16) : Radius.circular(0),
+                                      bottomRight: isSentByUser ? Radius.circular(0) : Radius.circular(16),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    message['text'],
+                                    style: GoogleFonts.poppins(
+                                      color: Color(0xC5000000),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                    );
+                  },
+                ),
           ),
           Container(
             padding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -248,10 +501,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
                 GestureDetector(
                   onTap: _sendMessage,
-                  child: CircleAvatar(
-                    radius: 25, // Increase radius if needed
-                    backgroundColor: Color(0xFF6BBFB5),
-                    child: Icon(Icons.send, color: Colors.white, weight:25)
+                  child: Container(
+                    width: 54, // Set width to 54
+                    height: 54, // Set height to 54
+                    decoration: BoxDecoration(
+                      color: Color(0xFF6BBFB5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.send,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ],

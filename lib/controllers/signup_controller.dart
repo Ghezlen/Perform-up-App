@@ -6,7 +6,7 @@ class SignUpControllers {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmPasswordController = TextEditingController();
-  final ValueNotifier<String> selectedRole = ValueNotifier<String>('Technician'); // default role
+  final ValueNotifier<String?> selectedRole = ValueNotifier<String?>(null);
 
   // Email validation
   String? validateEmail(String? value) {
@@ -35,6 +35,14 @@ class SignUpControllers {
   String? validateConfirmPassword(String? value) {
     if (value != passwordController.text) {
       return 'Passwords do not match';
+    }
+    return null;
+  }
+
+  // Role validation
+  String? validateRole(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please select a role';
     }
     return null;
   }

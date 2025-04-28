@@ -10,6 +10,20 @@ class SendNotificationView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<NotificationProvider>(
       builder: (context, provider, child) {
+        // If user is a technician, show no permission message
+        if (provider.isTechnician) {
+          return Center(
+            child: Text(
+              'You do not have permission to send notifications',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                color: Color(0xC5000000),
+              ),
+            ),
+          );
+        }
+
+        // Only show notification form for managers and supervisors
         return SingleChildScrollView(
           padding: EdgeInsets.all(16),
           child: Column(

@@ -4,20 +4,129 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pfe/controllers/signup_controller.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'package:pfe/services/api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class EditProfileScreen extends StatefulWidget {
-  const EditProfileScreen({super.key});
+  const EditProfileScreen({Key? key}) : super(key: key);
 
   @override
-  State<EditProfileScreen> createState() => _EditProfileScreenState();
+  _EditProfileScreenState createState() => _EditProfileScreenState();
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final SignUpControllers controllers = SignUpControllers();
+  final _formKey = GlobalKey<FormState>();
+  final _usernameController = TextEditingController();
+  final _currentPasswordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  
+  bool _isLoading = false;
+  bool _showCurrentPassword = false;
+  bool _showNewPassword = false;
+  bool _showConfirmPassword = false;
+  String? _userEmail;
+  String? _currentUsername;
+  String? _profilePicture;
   bool _isPasswordVisible = false;
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   File? _imageFile;
   final ImagePicker _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('userId');
+    
+    setState(() {
+      _userEmail = prefs.getString('email');
+      _currentUsername = prefs.getString('username');
+      _profilePicture = userId != null ? prefs.getString('profilePicture_$userId') : null;
+      _usernameController.text = _currentUsername ?? '';
+    });
+  }
+
+  // Convert image file to base64 string
+  Future<String> _imageToBase64(File imageFile) async {
+    final bytes = await imageFile.readAsBytes();
+    return 'data:image/jpeg;base64,${base64Encode(bytes)}';
+  }
+
+  Future<void> _updateProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final apiService = ApiService();
+      final bool isChangingPassword = _currentPasswordController.text.isNotEmpty &&
+          _newPasswordController.text.isNotEmpty;
+          
+      // Convert image to base64 if an image was selected
+      String? base64Image;
+      if (_imageFile != null) {
+        base64Image = await _imageToBase64(_imageFile!);
+      }
+
+      final response = await apiService.editProfile(
+        email: _userEmail!,
+        username: _usernameController.text != _currentUsername
+            ? _usernameController.text
+            : null,
+        currentPassword:
+            isChangingPassword ? _currentPasswordController.text : null,
+        newPassword: isChangingPassword ? _newPasswordController.text : null,
+        profilePicture: base64Image,
+      );
+
+      // Update stored username if it was changed
+      if (response['username'] != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('username', response['username']);
+      }
+      
+      // Update stored profile picture if it was returned
+      if (response['profilePicture'] != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final userId = prefs.getString('userId');
+        if (userId != null) {
+          await prefs.setString('profilePicture_$userId', response['profilePicture']);
+        }
+        setState(() {
+          _profilePicture = response['profilePicture'];
+        });
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['message']),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context, true); // Return true to indicate successful update
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -88,66 +197,56 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Color(0xFFF0F7F5),
-appBar: AppBar(
-  toolbarHeight: 70,
-  backgroundColor: Colors.transparent,
-  elevation: 0,
-  centerTitle: true,
-  leading: Padding(
-    padding: EdgeInsets.all(8.0), // Adjust padding as needed
-    child: Container(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Color(0xFF6BBFB5), // Green background
-      ),
-      child: IconButton(
-        icon: Icon(
-          FontAwesomeIcons.arrowLeft,
-          color: Colors.white, // White icon
-          size: 20,
-        ),
-        onPressed: () => Navigator.pushNamed(context, '/chats'),
-      ),
-    ),
-  ),
-  title: Text(
-    "My profile",
-    style: GoogleFonts.poppins(
-      fontSize: 22,
-      fontWeight: FontWeight.w500,
-      color: Color(0xC5000000),
-    ),
-  ),
-  actions: [
-    Padding(
-      padding: EdgeInsets.all(15.0), // Adjust padding as needed
-      child: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Color(0xFF6BBFB5), // Green background
-        ),
-        child: IconButton(
-          icon: Icon(
-            FontAwesomeIcons.solidSave,
-            color: Colors.white, // White icon
-            size: 20,
+      appBar: AppBar(
+        toolbarHeight: 70,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        leading: Padding(
+          padding: EdgeInsets.all(8.0), // Adjust padding as needed
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFF6BBFB5), // Green background
+            ),
+            child: IconButton(
+              icon: Icon(
+                FontAwesomeIcons.arrowLeft,
+                color: Colors.white, // White icon
+                size: 20,
+              ),
+              onPressed: () => Navigator.pop(context),
+            ),
           ),
-          onPressed: () {
-            if (_formKey.currentState!.validate()) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Profile updated successfully!'),
-                  backgroundColor: Color(0xFF6BBFB5),
-                ),
-              );
-            }
-          },
         ),
+        title: Text(
+          "My profile",
+          style: GoogleFonts.poppins(
+            fontSize: 22,
+            fontWeight: FontWeight.w500,
+            color: Color(0xC5000000),
+          ),
+        ),
+        actions: [
+          Padding(
+            padding: EdgeInsets.all(15.0), // Adjust padding as needed
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFF6BBFB5), // Green background
+              ),
+              child: IconButton(
+                icon: Icon(
+                  FontAwesomeIcons.solidSave,
+                  color: Colors.white, // White icon
+                  size: 20,
+                ),
+                onPressed: _isLoading ? null : _updateProfile,
+              ),
+            ),
+          ),
+        ],
       ),
-    ),
-  ],
-),
-
       body: SingleChildScrollView(
         child: Form(
           key: _formKey,
@@ -172,9 +271,18 @@ appBar: AppBar(
                         child: CircleAvatar(
                           radius: 58,
                           backgroundColor: Colors.transparent,
-                          backgroundImage: _imageFile != null
-                              ? FileImage(_imageFile!) as ImageProvider
-                              : AssetImage('assets/images/smith.png'),
+                          backgroundImage: _imageFile != null 
+                              ? FileImage(_imageFile!) 
+                              : _profilePicture != null && _profilePicture!.isNotEmpty
+                                  ? MemoryImage(base64Decode(_profilePicture!.split(',').last)) as ImageProvider
+                                  : null,
+                          child: _imageFile == null && (_profilePicture == null || _profilePicture!.isEmpty)
+                              ? Icon(
+                                  Icons.person,
+                                  size: 60,
+                                  color: Colors.grey,
+                                )
+                              : null,
                         ),
                       ),
                       Positioned(
@@ -189,9 +297,9 @@ appBar: AppBar(
                           ),
                           child: IconButton(
                             icon: Icon(
-                              FontAwesomeIcons.pencil,
+                              Icons.camera_alt,
                               color: Colors.white,
-                              size: 15,
+                              size: 20,
                             ),
                             onPressed: _showImageSourceDialog,
                           ),
@@ -211,7 +319,7 @@ appBar: AppBar(
                 ),
                 SizedBox(height: 8),
                 TextFormField(
-                  initialValue: "John Doe", // Example name, replace with actual user name
+                  controller: _usernameController,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please enter your full name';
@@ -271,7 +379,7 @@ appBar: AppBar(
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    "FlenaFoulenia@gmail.com",
+                    _userEmail ?? '',
                     style: GoogleFonts.poppins(
                       fontSize: 16,
                       color: Color(0x99000000),
@@ -289,9 +397,8 @@ appBar: AppBar(
                 ),
                 SizedBox(height: 8),
                 TextFormField(
-                  initialValue: "••••••••", // Masked password
-                  validator: controllers.validatePassword,
-                  obscureText: !_isPasswordVisible,
+                  controller: _currentPasswordController,
+                  obscureText: !_showCurrentPassword,
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: Color(0xFFF0F0F0),
@@ -302,17 +409,75 @@ appBar: AppBar(
                     contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _isPasswordVisible ? FontAwesomeIcons.eye : FontAwesomeIcons.eyeSlash,
-                        color: Color(0x99000000),
-                        size: 20,
+                        _showCurrentPassword
+                            ? Icons.visibility
+                            : Icons.visibility_off,
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _isPasswordVisible = !_isPasswordVisible;
-                        });
-                      },
+                      onPressed: () => setState(
+                          () => _showCurrentPassword = !_showCurrentPassword),
                     ),
                   ),
+                ),
+                SizedBox(height: 20),
+                TextFormField(
+                  controller: _newPasswordController,
+                  obscureText: !_showNewPassword,
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: Color(0xFFF0F0F0),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _showNewPassword ? Icons.visibility : Icons.visibility_off,
+                      ),
+                      onPressed: () =>
+                          setState(() => _showNewPassword = !_showNewPassword),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (_currentPasswordController.text.isNotEmpty &&
+                        (value == null || value.isEmpty)) {
+                      return 'Please enter a new password';
+                    }
+                    if (value != null && value.isNotEmpty && value.length < 6) {
+                      return 'Password must be at least 6 characters';
+                    }
+                    return null;
+                  },
+                ),
+                SizedBox(height: 20),
+                TextFormField(
+                  controller: _confirmPasswordController,
+                  obscureText: !_showConfirmPassword,
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: Color(0xFFF0F0F0),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _showConfirmPassword
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                      onPressed: () => setState(
+                          () => _showConfirmPassword = !_showConfirmPassword),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (_newPasswordController.text.isNotEmpty &&
+                        value != _newPasswordController.text) {
+                      return 'Passwords do not match';
+                    }
+                    return null;
+                  },
                 ),
                 SizedBox(height: 40),
                 SizedBox(
@@ -363,10 +528,10 @@ appBar: AppBar(
               // Action for File icon
               break;
             case 1:
-              Navigator.pushNamed(context, '/chats');
+              Navigator.pushReplacementNamed(context, '/chats');
               break;
             case 2:
-              Navigator.pushNamed(context, '/chats');
+              Navigator.pushReplacementNamed(context, '/chats');
               break;
             case 3:
               // Already on profile
@@ -375,35 +540,32 @@ appBar: AppBar(
         },
         items: [
           BottomNavigationBarItem(
-            icon: Icon(
-              FontAwesomeIcons.solidFileLines,
-              size: 24,
-            ),
+            icon: Icon(FontAwesomeIcons.solidFileLines, size: 24),
             label: "",
           ),
           BottomNavigationBarItem(
-            icon: Icon(
-              FontAwesomeIcons.solidCommentDots,
-              size: 24,
-            ),
+            icon: Icon(FontAwesomeIcons.solidCommentDots, size: 24),
             label: "",
           ),
           BottomNavigationBarItem(
-            icon: Icon(
-              FontAwesomeIcons.home,
-              size: 24,
-            ),
+            icon: Icon(FontAwesomeIcons.home, size: 24),
             label: "",
           ),
           BottomNavigationBarItem(
-            icon: Icon(
-              FontAwesomeIcons.userAlt,
-              size: 24,
-            ),
+            icon: Icon(FontAwesomeIcons.userAlt, size: 24),
             label: "",
           ),
         ],
       ),
     );
   }
-} 
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+}

@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.6.2
+  sdk: '>=3.1.3 <4.0.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -30,15 +30,19 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_svg: ^2.0.7
-  font_awesome_flutter: ^10.4.0
-  google_fonts: ^5.0.0
+  flutter_svg: ^2.0.9
+  font_awesome_flutter: ^10.6.0
+  google_fonts: ^6.1.0
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
-  pin_code_fields: ^8.0.1
+  cupertino_icons: ^1.0.2
   provider: ^6.1.1
   image_picker: ^1.0.7
+  http: ^1.1.0
+  shared_preferences: ^2.2.2
+  logger: ^2.0.2+1
+  stomp_dart_client: ^0.4.0
+  web_socket_channel: ^2.4.0
 
 
 dev_dependencies:
@@ -51,7 +55,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^2.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -59,8 +63,16 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
   assets:
+    - assets/
     - assets/images/
+    - assets/images/login.svg
     - assets/images/resetPassword.svg
+    - assets/images/smith.png
+    - assets/images/merry.png
+    - assets/images/john.png
+    - assets/images/monica.png
+    - assets/images/innoxent.png
+    - assets/images/harry.png
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

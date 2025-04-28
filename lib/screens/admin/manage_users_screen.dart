@@ -1,63 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:pfe/services/api_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ManageUsersScreen extends StatefulWidget {
-  const ManageUsersScreen({Key? key}) : super(key: key);
+  const ManageUsersScreen({super.key});
 
   @override
-  State<ManageUsersScreen> createState() => _ManageUsersScreenState();
+  _ManageUsersScreenState createState() => _ManageUsersScreenState();
 }
 
 class _ManageUsersScreenState extends State<ManageUsersScreen> {
+  final ApiService _apiService = ApiService();
   final TextEditingController _searchController = TextEditingController();
+  List<dynamic> _pendingUsers = [];
+  List<dynamic> _approvedUsers = [];
+  bool _isLoading = true;
   bool _isSearching = false;
   String _searchQuery = "";
+  String? _error;
 
-  // Simulated data for authentication requests and users
-  final List<Map<String, dynamic>> authRequests = [
-    {"name": "Smith Mathew", "image": "assets/images/smith.png", "role": "Worker", "email": "smithmathew@textile.com"},
-    {"name": "Merry An.", "image": "assets/images/merry.png", "role": "Supervisor", "email": "merryan@textile.com"},
-    {"name": "John Walton", "image": "assets/images/john.png", "role": "Manager", "email": "johnwalton@textile.com"},
-  ];
-
-  final List<Map<String, dynamic>> users = [
-    {
-      "name": "Monica Randawa",
-      "role": "Supervisor",
-      "email": "monicarandawa@textile.com",
-      "image": "assets/images/monica.png"
-    },
-    {
-      "name": "Innoxent Jay",
-      "role": "Manager",
-      "email": "innoxentjay@textile.com",
-      "image": "assets/images/innoxent.png"
-    },
-    {
-      "name": "Harry Samit",
-      "role": "Technician",
-      "email": "harrysamit@textile.com",
-      "image": "assets/images/harry.png"
-    },
-  ];
-
-  List<Map<String, dynamic>> get filteredAuthRequests {
-    if (_searchQuery.isEmpty) return authRequests;
-    return authRequests.where((request) {
-      return request["name"].toLowerCase().contains(_searchQuery.toLowerCase()) ||
-             request["email"].toLowerCase().contains(_searchQuery.toLowerCase()) ||
-             request["role"].toLowerCase().contains(_searchQuery.toLowerCase());
-    }).toList();
-  }
-
-  List<Map<String, dynamic>> get filteredUsers {
-    if (_searchQuery.isEmpty) return users;
-    return users.where((user) {
-      return user["name"].toLowerCase().contains(_searchQuery.toLowerCase()) ||
-             user["email"].toLowerCase().contains(_searchQuery.toLowerCase()) ||
-             user["role"].toLowerCase().contains(_searchQuery.toLowerCase());
-    }).toList();
+  @override
+  void initState() {
+    super.initState();
+    _loadUsers();
   }
 
   @override
@@ -66,31 +33,135 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     super.dispose();
   }
 
-  void _acceptUser(Map<String, dynamic> request) {
-    setState(() {
-      // Add user to users list
-      users.add({
-        "name": request["name"],
-        "role": request["role"],
-        "email": request["email"],
-        "image": request["image"],
+  Future<void> _loadUsers() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
       });
-      
-      // Remove from auth requests
-      authRequests.remove(request);
-    });
 
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${request["name"]} has been accepted'),
-        backgroundColor: Color(0xFF6BBFB5),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-        margin: EdgeInsets.all(16),
-      ),
+      final pendingUsers = await _apiService.getPendingUsers();
+      final approvedUsers = await _apiService.getApprovedUsers();
+      
+      setState(() {
+        _pendingUsers = pendingUsers;
+        _approvedUsers = approvedUsers;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  List<dynamic> get filteredPendingUsers {
+    if (_searchQuery.isEmpty) return _pendingUsers;
+    return _pendingUsers.where((user) {
+      return user["username"].toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
+             user["email"].toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
+             user["role"].toString().toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+  }
+
+  List<dynamic> get filteredApprovedUsers {
+    if (_searchQuery.isEmpty) return _approvedUsers;
+    return _approvedUsers.where((user) {
+      return user["username"].toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
+             user["email"].toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
+             user["role"].toString().toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+  }
+
+  Future<void> _approveUser(String userId) async {
+    try {
+      await _apiService.approveUser(userId);
+      await _loadUsers();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('User approved successfully'),
+            backgroundColor: Color(0xFF6BBFB5),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: EdgeInsets.all(16),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error approving user: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteUser(String userId) async {
+    try {
+      await _apiService.deleteUser(userId);
+      await _loadUsers();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('User deleted successfully'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: EdgeInsets.all(16),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting user: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _logout() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear(); // Clear all stored data
+      
+      // Navigate to login screen and remove all previous routes
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error logging out: $e')),
+      );
+    }
+  }
+
+  void _showLogoutConfirmation() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Logout'),
+          content: Text('Are you sure you want to logout?'),
+          actions: [
+            TextButton(
+              child: Text('Cancel', style: TextStyle(color: Colors.black)),
+              onPressed: () => Navigator.pop(context),
+            ),
+            TextButton(
+              child: Text('Logout', style: TextStyle(color: Color(0xFF6BBFB5))),
+              onPressed: () {
+                Navigator.pop(context);
+                _logout();
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -101,53 +172,73 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: _isSearching ? _buildSearchField() : Row(
-          children: [
-            Text(
-              "Manage Users",
-              style: GoogleFonts.poppins(
-                fontSize: 22,
-                fontWeight: FontWeight.w500,
-                color: Color(0xC5000000),
+        automaticallyImplyLeading: false,
+        title: _isSearching 
+            ? Expanded(child: _buildSearchField())
+            : Text(
+                "Manage Users",
+                style: GoogleFonts.poppins(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xC5000000),
+                ),
               ),
-            ),
-            Spacer(),
-            IconButton(
-              icon: Icon(_isSearching ? Icons.close : Icons.search, color: Color(0xC5000000)),
-              onPressed: () {
-                setState(() {
-                  _isSearching = !_isSearching;
-                  if (!_isSearching) {
-                    _searchController.clear();
-                    _searchQuery = "";
-                  }
-                });
-              },
-            ),
-          ],
-        ),
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSectionTitle("Authentication Requests"),
-              SizedBox(height: 16),
-              filteredAuthRequests.isEmpty && _searchQuery.isNotEmpty
-                  ? _buildNoResults("requests")
-                  : _buildAuthRequestsList(),
-              SizedBox(height: 24),
-              _buildSectionTitle("Users"),
-              SizedBox(height: 16),
-              filteredUsers.isEmpty && _searchQuery.isNotEmpty
-                  ? _buildNoResults("users")
-                  : _buildUsersList(),
-            ],
+        actions: [
+          IconButton(
+            icon: Icon(_isSearching ? Icons.close : Icons.search, color: Color(0xC5000000)),
+            onPressed: () {
+              setState(() {
+                _isSearching = !_isSearching;
+                if (!_isSearching) {
+                  _searchController.clear();
+                  _searchQuery = "";
+                }
+              });
+            },
           ),
-        ),
+          IconButton(
+            icon: Icon(FontAwesomeIcons.rightFromBracket, color: Color(0xC5000000), size: 20),
+            onPressed: _showLogoutConfirmation,
+          ),
+        ],
       ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator(color: Color(0xFF6BBFB5)))
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('Error: $_error'),
+                      SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _loadUsers,
+                        child: Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              : SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionTitle("Authentication Requests"),
+                        SizedBox(height: 16),
+                        filteredPendingUsers.isEmpty && _searchQuery.isNotEmpty
+                            ? _buildNoResults("requests")
+                            : _buildAuthRequestsList(),
+                        SizedBox(height: 24),
+                        _buildSectionTitle("Users"),
+                        SizedBox(height: 16),
+                        filteredApprovedUsers.isEmpty && _searchQuery.isNotEmpty
+                            ? _buildNoResults("users")
+                            : _buildUsersList(),
+                      ],
+                    ),
+                  ),
+                ),
     );
   }
 
@@ -215,7 +306,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
 
   Widget _buildAuthRequestsList() {
     return Column(
-      children: filteredAuthRequests.map((request) {
+      children: filteredPendingUsers.map((user) {
         return Container(
           margin: EdgeInsets.only(bottom: 12),
           padding: EdgeInsets.all(12),
@@ -233,7 +324,11 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
           child: Row(
             children: [
               CircleAvatar(
-                backgroundImage: AssetImage(request["image"]),
+                backgroundColor: Color(0xFF6BBFB5),
+                child: Text(
+                  user["username"][0].toUpperCase(),
+                  style: TextStyle(color: Colors.white),
+                ),
                 radius: 25,
               ),
               SizedBox(width: 16),
@@ -242,7 +337,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      request["name"],
+                      user["username"] ?? 'Unknown',
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
@@ -250,7 +345,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                       ),
                     ),
                     Text(
-                      "Role: ${request["role"]}",
+                      "Role: ${user["role"] ?? 'Unknown'}",
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         color: Color(0x99000000),
@@ -260,7 +355,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                 ),
               ),
               ElevatedButton(
-                onPressed: () => _acceptUser(request),
+                onPressed: () => _approveUser(user["id"]),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Color(0xFF6BBFB5),
                   foregroundColor: Colors.white,
@@ -279,7 +374,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
 
   Widget _buildUsersList() {
     return Column(
-      children: filteredUsers.map((user) {
+      children: filteredApprovedUsers.map((user) {
         return Container(
           margin: EdgeInsets.only(bottom: 12),
           padding: EdgeInsets.all(12),
@@ -297,7 +392,11 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
           child: Row(
             children: [
               CircleAvatar(
-                backgroundImage: AssetImage(user["image"]),
+                backgroundColor: Color(0xFF6BBFB5),
+                child: Text(
+                  user["username"][0].toUpperCase(),
+                  style: TextStyle(color: Colors.white),
+                ),
                 radius: 25,
               ),
               SizedBox(width: 16),
@@ -306,7 +405,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      user["name"],
+                      user["username"] ?? 'Unknown',
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
@@ -314,14 +413,14 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                       ),
                     ),
                     Text(
-                      "Role: ${user["role"]}",
+                      "Role: ${user["role"] ?? 'Unknown'}",
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         color: Color(0x99000000),
                       ),
                     ),
                     Text(
-                      "Email: ${user["email"]}",
+                      "Email: ${user["email"] ?? 'No email'}",
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         color: Color(0x99000000),
@@ -356,7 +455,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                 leading: Icon(Icons.delete_outline, color: Colors.red),
                 title: Text('Remove User'),
                 onTap: () {
-                  // Implement remove user functionality
                   Navigator.pop(context);
                   _showRemoveConfirmation(context, user);
                 },
@@ -374,20 +472,17 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Remove User'),
-          content: Text('Are you sure you want to remove ${user["name"]}?'),
+          content: Text('Are you sure you want to remove ${user["username"]}?'),
           actions: [
             TextButton(
-              child: Text('Cancel',style: TextStyle(color: Colors.black)),
+              child: Text('Cancel', style: TextStyle(color: Colors.black)),
               onPressed: () => Navigator.pop(context),
             ),
             TextButton(
               child: Text('Remove', style: TextStyle(color: Colors.red)),
               onPressed: () {
-                // Implement user removal
-                setState(() {
-                  users.remove(user);
-                });
                 Navigator.pop(context);
+                _deleteUser(user["id"]);
               },
             ),
           ],
