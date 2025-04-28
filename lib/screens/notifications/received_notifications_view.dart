@@ -6,6 +6,7 @@ import '../../providers/notification_provider.dart';
 import '../../services/websocket_service.dart';
 import '../../models/notification_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class ReceivedNotificationsView extends StatefulWidget {
   const ReceivedNotificationsView({super.key});
@@ -158,7 +159,16 @@ class _ReceivedNotificationsViewState extends State<ReceivedNotificationsView> {
                 child: Row(
                   children: [
                     CircleAvatar(
-                      backgroundImage: AssetImage('assets/images/default_avatar.png'),
+                      backgroundImage: notification.senderProfilePicture != null && notification.senderProfilePicture!.isNotEmpty
+                          ? (notification.senderProfilePicture!.startsWith('data:image')
+                              ? MemoryImage(
+                                  base64Decode(
+                                    notification.senderProfilePicture!.split(',').last,
+                                  ),
+                                )
+                              : NetworkImage(notification.senderProfilePicture!)
+                            ) as ImageProvider
+                          : AssetImage('assets/images/avatar.jpg'),
                       radius: 25,
                     ),
                     SizedBox(width: 16),
@@ -169,14 +179,18 @@ class _ReceivedNotificationsViewState extends State<ReceivedNotificationsView> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                notification.title,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xC5000000),
+                              Expanded(
+                                child: Text(
+                                  notification.title,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xC5000000),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                              SizedBox(width: 8),
                               Text(
                                 notification.createdAt.toString(),
                                 style: GoogleFonts.poppins(
