@@ -5,6 +5,7 @@ import 'dart:async';
 import '../../providers/notification_provider.dart';
 import '../../services/websocket_service.dart';
 import '../../models/notification_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ReceivedNotificationsView extends StatefulWidget {
   const ReceivedNotificationsView({super.key});
@@ -33,7 +34,23 @@ class _ReceivedNotificationsViewState extends State<ReceivedNotificationsView> {
   }
   
   // Subscribe to WebSocket notifications
-  void _subscribeToWebSocketNotifications() {
+  void _subscribeToWebSocketNotifications() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('userId');
+    
+    if (userId == null) {
+      print('Error: User ID not found in SharedPreferences');
+      return;
+    }
+
+    // Connect to websocket if not already connected
+    if (!_webSocketService.isConnected) {
+      await _webSocketService.connect();
+    }
+
+    // Subscribe to notifications
+    _webSocketService.subscribeToNotifications(userId);
+
     _notificationSubscription = _webSocketService.notificationStream.listen((notification) {
       // Add the notification to the provider
       final provider = Provider.of<NotificationProvider>(context, listen: false);

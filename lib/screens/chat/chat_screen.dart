@@ -48,6 +48,13 @@ class _ChatScreenState extends State<ChatScreen> {
     
     // Subscribe to websocket messages
     _subscribeToWebSocketMessages();
+
+    // Add a post-frame callback to scroll to bottom after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _scrollToBottom();
+      }
+    });
   }
 
   @override
@@ -154,8 +161,11 @@ class _ChatScreenState extends State<ChatScreen> {
           _isLoading = false;
         });
         
+        // Schedule scroll to bottom after messages are loaded
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottom();
+          if (mounted) {
+            _scrollToBottom();
+          }
         });
       }
     } catch (e) {
@@ -177,7 +187,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
+        0.0, // Since we're using reverse: true, 0.0 is the bottom
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
@@ -312,40 +322,51 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                         ),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final message = _messages[index];
-                          final isMe = message.senderId == _currentUserId;
-
-                          return Align(
-                            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              margin: const EdgeInsets.only(bottom: 8),
-                              decoration: BoxDecoration(
-                                color: isMe ? const Color(0xFFD0ECE8) : const Color(0xFFF5F5F5),
-                                borderRadius: BorderRadius.only(
-                                  topLeft: const Radius.circular(16),
-                                  topRight: const Radius.circular(16),
-                                  bottomLeft: Radius.circular(isMe ? 16 : 0),
-                                  bottomRight: Radius.circular(isMe ? 0 : 16),
-                                ),
-                              ),
-                              constraints: BoxConstraints(
-                                maxWidth: MediaQuery.of(context).size.width * 0.75,
-                              ),
-                              child: Text(
-                                message.content,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ),
-                          );
+                    : NotificationListener<ScrollNotification>(
+                        onNotification: (ScrollNotification scrollInfo) {
+                          if (scrollInfo is ScrollEndNotification) {
+                            // Update scroll position when scrolling ends
+                            _scrollToBottom();
+                          }
+                          return true;
                         },
+                        child: ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _messages.length,
+                          reverse: true, // This will make the list start from bottom
+                          itemBuilder: (context, index) {
+                            final message = _messages[_messages.length - 1 - index];
+                            final isMe = message.senderId == _currentUserId;
+
+                            return Align(
+                              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                margin: const EdgeInsets.only(bottom: 8),
+                                decoration: BoxDecoration(
+                                  color: isMe ? const Color(0xFFD0ECE8) : const Color(0xFFF5F5F5),
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: const Radius.circular(16),
+                                    topRight: const Radius.circular(16),
+                                    bottomLeft: Radius.circular(isMe ? 16 : 0),
+                                    bottomRight: Radius.circular(isMe ? 0 : 16),
+                                  ),
+                                ),
+                                constraints: BoxConstraints(
+                                  maxWidth: MediaQuery.of(context).size.width * 0.75,
+                                ),
+                                child: Text(
+                                  message.content,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
           ),
           Container(

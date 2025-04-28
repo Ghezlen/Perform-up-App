@@ -222,15 +222,27 @@ class WebSocketService {
   
   Future<void> sendGroupMessage(String groupId, String content) async {
     if (!_isConnected) {
-      throw Exception('WebSocket is not connected');
+      print('[WebSocketService] Not connected, attempting to connect...');
+      await connect();
     }
     
+    final prefs = await SharedPreferences.getInstance();
+    final senderId = prefs.getString('userId');
+    final senderName = prefs.getString('username') ?? 'Unknown User';
+    
+    if (senderId == null) {
+      throw Exception('User ID not found in SharedPreferences');
+    }
+
     final message = {
-      'groupId': groupId,
+      'senderId': senderId,
+      'chatGroupId': groupId,
       'content': content,
       'timestamp': DateTime.now().toIso8601String(),
+      'senderName': senderName,
     };
-    
+
+    print('[WebSocketService] Sending group message to /app/group-chat: ${jsonEncode(message)}');
     _stompClient?.send(
       destination: '/app/group-chat',
       body: jsonEncode(message),
@@ -238,19 +250,39 @@ class WebSocketService {
   }
   
   void subscribeToGroupChat(String groupId) {
+    print('[WebSocketService] subscribeToGroupChat called with: $groupId');
+    print('[WebSocketService] Current connection status: ${_stompClient?.connected ?? false}');
+    
     if (!_isConnected) {
+      print('[WebSocketService] Not connected, cannot subscribe');
       throw Exception('WebSocket is not connected');
     }
-    
-    _stompClient?.subscribe(
-      destination: '/topic/group-chat/$groupId',
+
+    // Unsubscribe from previous chat group topic if exists
+    if (_chatSubscription != null) {
+      print('[WebSocketService] Unsubscribing from previous chat group');
+      _chatSubscription!();
+      _chatSubscription = null;
+    }
+
+    print('[WebSocketService] Subscribing to /topic/chat/$groupId');
+    _chatSubscription = _stompClient?.subscribe(
+      destination: '/topic/chat/$groupId',
       callback: (frame) {
+        print('[WebSocketService] Group chat frame received for topic /topic/chat/$groupId');
+        print('[WebSocketService] Frame body: ${frame.body}');
         if (frame.body != null) {
-          final message = Message.fromJson(jsonDecode(frame.body!));
-          _chatMessageStreamController.add(message);
+          try {
+            final message = Message.fromJson(jsonDecode(frame.body!));
+            print('[WebSocketService] Adding message to chatMessageStreamController: ${message.toJson()}');
+            _chatMessageStreamController.add(message);
+          } catch (e) {
+            print('[WebSocketService] Error parsing message: $e');
+          }
         }
       },
     );
+    print('[WebSocketService] Subscription to /topic/chat/$groupId created.');
   }
   
   // Subscribe to chat messages for a specific chat group
@@ -350,5 +382,106 @@ class WebSocketService {
       _logger.e('Connection health check failed: $e');
       return false;
     }
+  }
+
+  void subscribeToNotifications(String userId) {
+    print('[WebSocketService] subscribeToNotifications called with: $userId');
+    print('[WebSocketService] Current connection status: ${_stompClient?.connected ?? false}');
+    
+    if (!_isConnected) {
+      print('[WebSocketService] Not connected, attempting to connect...');
+      connect();
+      return;
+    }
+
+    print('[WebSocketService] Subscribing to /topic/notifications/$userId');
+    _stompClient?.subscribe(
+      destination: '/topic/notifications/$userId',
+      callback: (frame) {
+        print('[WebSocketService] Notification frame received');
+        print('[WebSocketService] Frame body: ${frame.body}');
+        if (frame.body != null) {
+          try {
+            final notification = NotificationModel.fromJson(jsonDecode(frame.body!));
+            print('[WebSocketService] Adding notification to notificationStreamController: ${notification.toJson()}');
+            _notificationStreamController.add(notification);
+          } catch (e) {
+            print('[WebSocketService] Error parsing notification: $e');
+          }
+        }
+      },
+    );
+
+    // Also subscribe to global notification types
+    print('[WebSocketService] Subscribing to global notification topics');
+    _stompClient?.subscribe(
+      destination: '/topic/notifications/type/urgent_meeting',
+      callback: (frame) {
+        if (frame.body != null) {
+          try {
+            final notification = NotificationModel.fromJson(jsonDecode(frame.body!));
+            _notificationStreamController.add(notification);
+          } catch (e) {
+            print('[WebSocketService] Error parsing urgent meeting notification: $e');
+          }
+        }
+      },
+    );
+
+    _stompClient?.subscribe(
+      destination: '/topic/notifications/type/machine_failure',
+      callback: (frame) {
+        if (frame.body != null) {
+          try {
+            final notification = NotificationModel.fromJson(jsonDecode(frame.body!));
+            _notificationStreamController.add(notification);
+          } catch (e) {
+            print('[WebSocketService] Error parsing machine failure notification: $e');
+          }
+        }
+      },
+    );
+
+    _stompClient?.subscribe(
+      destination: '/topic/notifications/type/production_delay',
+      callback: (frame) {
+        if (frame.body != null) {
+          try {
+            final notification = NotificationModel.fromJson(jsonDecode(frame.body!));
+            _notificationStreamController.add(notification);
+          } catch (e) {
+            print('[WebSocketService] Error parsing production delay notification: $e');
+          }
+        }
+      },
+    );
+
+    _stompClient?.subscribe(
+      destination: '/topic/notifications/type/efficiency_drop',
+      callback: (frame) {
+        if (frame.body != null) {
+          try {
+            final notification = NotificationModel.fromJson(jsonDecode(frame.body!));
+            _notificationStreamController.add(notification);
+          } catch (e) {
+            print('[WebSocketService] Error parsing efficiency drop notification: $e');
+          }
+        }
+      },
+    );
+
+    _stompClient?.subscribe(
+      destination: '/topic/notifications/type/emergency',
+      callback: (frame) {
+        if (frame.body != null) {
+          try {
+            final notification = NotificationModel.fromJson(jsonDecode(frame.body!));
+            _notificationStreamController.add(notification);
+          } catch (e) {
+            print('[WebSocketService] Error parsing emergency notification: $e');
+          }
+        }
+      },
+    );
   }
 } 
